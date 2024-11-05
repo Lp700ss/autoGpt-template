@@ -1,5 +1,7 @@
 use actix_cors::Cors;
+use actix_web::dev::RequestHead;
 use actix_web::{http::header, web, App, HttpServer, Responder, HttpResponse};
+use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use reqwest::Client as HttpClient;
 use async_trait::async_trait;
@@ -92,6 +94,37 @@ async fn create_task(app_state: web::Data<AppState>, task: web::Json<Task>) -> i
     HttpResponse::Ok().finish()
 }
 
-fn main() {
-    println!("Hello, world!");
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let db: Database = match Database::load_from_file() {
+        Ok(db) => db,
+        Err(_) => Database::new(),
+    };
+
+    let data: web::Data<AppState> = web::Data::new(AppState {
+        db: Mutex::new(db),
+    });
+
+    HttpServer::new(move || {
+        App::new()
+            .wrap(
+                Cors::permissive()
+                    .allowed_origin_fn(|origin: &HeaderValue, _req_head: &RequestHead| {
+                        origin.as_bytes().starts_with(b"http://localhost") || origin == "null"
+                    })
+                    .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+                    .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
+                    .allowed_header(header::CONTENT_TYPE)
+                    .supports_credentials()
+                    .max_age(3600),
+            )
+            .app_data(data.clone())
+            .route("/task", web::post().to(create_task))
+    })
+    .bind("127.0.0.1:8000")?
+    .run()
+    .await
 }
+// fn main() {
+//     println!("Hello, world!");
+// }
