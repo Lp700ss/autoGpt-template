@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Task {
@@ -78,6 +78,18 @@ impl Database {
         let db: Database = serde_json::from_str(&file_content)?;
         Ok(db)
     }
+}
+
+struct AppState {
+    db: Mutex<Database>
+}
+
+async fn create_task(app_state: web::Data<AppState>, task: web::Json<Task>) -> impl Responder {
+
+    let mut db: MutexGuard<Database> = app_state.db.lock().unwrap();
+    db.insert(task.into_inner()); 
+    let _=db.save_to_file();
+    HttpResponse::Ok().finish()
 }
 
 fn main() {
