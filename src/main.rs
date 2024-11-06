@@ -55,8 +55,8 @@ impl Database {
         self.tasks.remove(id)
     }
 
-    fn update(&mut self, id: u64, task: Task) {
-        self.tasks.insert(id, task);
+    fn update(&mut self, task: Task) {
+        self.tasks.insert(task.id, task);
     }
 
     // CRUD for Users
@@ -104,6 +104,50 @@ async fn read_task(app_state: web::Data<AppState>, id: web::Path<u64>) -> impl R
 
 }
 
+async fn read_all_task(app_state: web::Data<AppState>, id: web::Path<u64>) -> impl Responder {
+
+    let mut db: std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
+    let tasks = db.get_all();
+    HttpResponse::Ok().json(tasks)
+
+}
+
+async fn update_task(app_state: web::Data<AppState>, task: web::Json<Task>) -> impl Responder {
+
+    let mut db: std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
+    db.update(task.into_inner()); 
+    let _=db.save_to_file();
+    HttpResponse::Ok().finish()
+
+}
+
+async fn delete_task(app_state: web::Data<AppState>, id: web::Path<u64>) -> impl Responder {
+
+    let mut db: std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
+   db.delete(&id.into_inner());
+   let _=db.save_to_file();
+   HttpResponse::Ok().finish()
+
+}
+
+
+async fn register(app_state: web::Data<AppState>, user: web::Json<User>) -> impl Responder {
+    let mut db: std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
+    let _= db.save_to_file();
+    HttpResponse::Ok().finish()
+}
+
+async fn login(app_state: web::Data<AppState>, user: web::Json<User>) -> impl Responder {
+    let mut db: std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
+    match db.get_user_by_name(&user.username) {
+        Some(stored_user) if stored_user.password == user.password => {
+            HttpResponse::Ok().body("Logged In!")
+        },
+        _=> HttpResponse::BadRequest().body("Invalid Username or Password")
+    }
+}
+
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let db: Database = match Database::load_from_file() {
@@ -130,7 +174,12 @@ async fn main() -> std::io::Result<()> {
             )
             .app_data(data.clone())
             .route("/task", web::post().to(create_task))
+            .route("/task", web::get().to(read_all_task))
             .route("/task/{id}", web::get().to(read_task))
+            .route("/task/{id}", web::put().to(update_task))
+            .route("/task/{id}", web::delete().to(delete_task))
+            .route("/register", web::post().to(register))
+            .route("/login", web::post().to(login))
     })
     .bind("127.0.0.1:8000")?
     .run()
